@@ -70,6 +70,7 @@ services:
       - MARBLE_WORKSPACE_KEY=${MARBLE_WORKSPACE_KEY:-placeholder}
       - FREESOUND_CLIENT_ID=${FREESOUND_CLIENT_ID}
       - FREESOUND_API_KEY=${FREESOUND_API_KEY}
+      - VSR_INTERNAL_URL=http://vsr:8001
     depends_on:
       db:
         condition: service_healthy
