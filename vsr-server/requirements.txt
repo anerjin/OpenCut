@@ -1,0 +1,4 @@
+# FastAPI HTTP 레이어 의존성 (VSR 자체 의존성은 vsr-server/vsr/ 별도 설치)
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.12
