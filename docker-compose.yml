@@ -82,6 +82,25 @@ services:
       retries: 5
       start_period: 30s
 
+  vsr:
+    build: ./vsr-server
+    ports:
+      - "8001:8001"
+    environment:
+      - VSR_SOURCE=/app/vsr
+      - VSR_WORK_DIR=/tmp/vsr
+      - VSR_INPAINT_MODE=sttn-auto
+      - VSR_TIMEOUT_SECONDS=3600
+    volumes:
+      - ./vsr-server/vsr:/app/vsr:ro
+    profiles: ["vsr"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 volumes:
   postgres_data:
 
