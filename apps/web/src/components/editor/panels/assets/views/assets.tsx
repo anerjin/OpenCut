@@ -58,6 +58,12 @@ import {
 	Video01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import {
+	isVsrEnabled,
+	checkVsrHealth,
+	removeSubtitles,
+} from "@/media/vsr-service";
+import { readStorageQuotaStatus } from "@/services/storage/quota";
 
 export function MediaView() {
 	const editor = useEditor();
@@ -320,11 +326,76 @@ function MediaItemWithContextMenu({
 	const deleteLabel =
 		idsToDelete.length > 1 ? `Delete ${idsToDelete.length} items` : "Delete";
 
+	const editor = useEditor();
+	const activeProject = useEditor((e) => e.project.getActive());
+	const { requestRevealMedia } = useAssetsPanelStore();
+	const vsrEnabled = isVsrEnabled() && item.type === "video";
+
+	const handleRemoveSubtitles = async () => {
+		// 1. VSR 헬스 확인
+		const healthy = await checkVsrHealth();
+		if (!healthy) {
+			toast.error(
+				"VSR 서버가 실행되지 않았습니다. docker compose --profile vsr up 실행 후 재시도해주세요.",
+			);
+			return;
+		}
+
+		// 2. 스토리지 쿼터 사전 확인 (item.file은 MediaAsset에 직접 포함)
+		const quota = await readStorageQuotaStatus();
+		if (
+			quota.availableBytes !== null &&
+			item.file.size > quota.availableBytes
+		) {
+			toast.error("저장 공간 부족. 기존 미디어를 삭제 후 재시도해주세요.");
+			return;
+		}
+
+		// 3. 처리 시작 toast
+		const toastId = toast.loading(
+			"자막 제거 중... (수 분 소요될 수 있습니다. 탭을 닫지 마세요.)",
+			{ duration: Number.POSITIVE_INFINITY },
+		);
+
+		try {
+			// 4. VSR 호출 (item.file이 MediaAsset에 직접 포함되어 있음)
+			const resultBlob = await removeSubtitles(item.file, item.name);
+			const baseName = item.name.replace(/\.[^.]+$/, "");
+			const resultFile = new File([resultBlob], `${baseName}_no_sub.mp4`, {
+				type: "video/mp4",
+			});
+
+			// 5. 새 에셋으로 등록 (processMediaAssets 실제 시그니처 사용)
+			const processedAssets = await processMediaAssets({
+				files: [resultFile],
+			});
+			for (const asset of processedAssets) {
+				const newAsset = await editor.media.addMediaAsset({
+					projectId: activeProject.metadata.id,
+					asset,
+				});
+				if (newAsset) requestRevealMedia(newAsset.id);
+			}
+
+			toast.dismiss(toastId);
+			toast.success(`자막 제거 완료: ${baseName}_no_sub.mp4`);
+		} catch (err) {
+			toast.dismiss(toastId);
+			const message = err instanceof Error ? err.message : "알 수 없는 오류";
+			toast.error(`자막 제거 실패: ${message}`);
+		}
+	};
+
 	return (
 		<ContextMenu>
 			<ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
 			<ContextMenuContent>
 				<ContextMenuItem>Export clips</ContextMenuItem>
+				{vsrEnabled && (
+					<ContextMenuItem onClick={handleRemoveSubtitles}>
+						자막 제거 (실험적)
+					</ContextMenuItem>
+				)}
 				<ContextMenuItem
 					variant="destructive"
 					onClick={(event: React.MouseEvent<HTMLDivElement>) =>
